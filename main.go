@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -12,78 +13,52 @@ func main() {
 	handlers := []Handler{
 		{
 			path:    "GET",
-			handler: foo,
+			handler: getBarHandler,
 		},
 		{
-			path:    "GET /baz",
-			handler: bazGET,
+			path:    "GET /bar",
+			handler: getBazHandler,
 		},
-
 		{
-			path:    "POST /baz",
-			handler: bazPOST,
+			path:    "POST /bar",
+			handler: postBazHandler,
 		},
 	}
+	NewRouteGroup("foo", handlers, mux)
 
-	NewRouteGroup("test", GroupParams{
-		handlerList: handlers,
-	}, mux)
+	handler := LogRequests(mux)
+	handler = StripSlashes(mux)
 
-	err := http.ListenAndServe(":8080", StripSlashes(mux))
+	err := http.ListenAndServe(":8080", handler)
 	if err != nil {
 		panic(fmt.Sprintf("cannot start server: %s", err))
 	}
 }
 
-func foo(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("foo"))
-}
-
-func bazGET(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("GET request to %s\n", r.URL)
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("GET"))
-}
-
-func bazPOST(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("POST request to %s\n", r.URL)
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("POST"))
-}
-
+// THE IMPORTANT PART IS IN HERE
 type Handler struct {
 	path    string
 	handler http.HandlerFunc
 }
 
-type GroupParams struct {
-	handlerList []Handler
-}
-
-func NewRouteGroup(prefix string, arg GroupParams, r *http.ServeMux) {
-	fmt.Printf("Creating Route Group '%s'\n", strings.ToUpper(prefix))
-	for _, h := range arg.handlerList {
+// Creates a prefixed route group on a passed http.ServeMux
+func NewRouteGroup(prefix string, handlerList []Handler, mux *http.ServeMux) {
+	for _, h := range handlerList {
 		path := addPrefix(prefix, h.path)
-
-		r.HandleFunc(path, h.handler)
+		mux.HandleFunc(path, h.handler)
 		fmt.Println(path)
 	}
-	fmt.Println("-----------DONE")
 }
 
+// Build the URL path depening on wether a subpath is used or not
 func addPrefix(prefix, p string) string {
-	splits := strings.Split(p, " ")
-
-	// add validation here
-
-	if len(splits) > 1 {
-		return fmt.Sprintf("%s /%s%s", splits[0], prefix, splits[1])
+	parts := strings.SplitN(p, " ", 2)
+	method := parts[0]
+	if len(parts) > 1 {
+		path := parts[1]
+		return fmt.Sprintf("%s /%s%s", method, prefix, path)
 	}
-	return fmt.Sprintf("%s /%s", splits[0], prefix)
-
+	return fmt.Sprintf("%s /%s", method, prefix)
 }
 
 func StripSlashes(next http.Handler) http.Handler {
@@ -93,6 +68,33 @@ func StripSlashes(next http.Handler) http.Handler {
 		if l > 1 && p[l-1] == '/' {
 			r.URL.Path = p[:l-1]
 		}
+		next.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(fn)
+}
+
+// END
+
+func getBarHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("invoking handler: GET %s\n", r.URL)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("GET bar"))
+}
+
+func getBazHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("GET baz"))
+}
+
+func postBazHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("POST baz"))
+}
+
+func LogRequests(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s to %s\n", r.Method, r.URL)
+
 		next.ServeHTTP(w, r)
 	}
 	return http.HandlerFunc(fn)
