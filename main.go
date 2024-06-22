@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 )
@@ -26,8 +25,7 @@ func main() {
 	}
 	NewRouteGroup("foo", handlers, mux)
 
-	handler := LogRequests(mux)
-	handler = StripSlashes(mux)
+	handler := StripSlashes(mux)
 
 	err := http.ListenAndServe(":8080", handler)
 	if err != nil {
@@ -46,7 +44,6 @@ func NewRouteGroup(prefix string, handlerList []Handler, mux *http.ServeMux) {
 	for _, h := range handlerList {
 		path := addPrefix(prefix, h.path)
 		mux.HandleFunc(path, h.handler)
-		fmt.Println(path)
 	}
 }
 
@@ -76,7 +73,6 @@ func StripSlashes(next http.Handler) http.Handler {
 // END
 
 func getBarHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("invoking handler: GET %s\n", r.URL)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("GET bar"))
 }
@@ -89,13 +85,4 @@ func getBazHandler(w http.ResponseWriter, r *http.Request) {
 func postBazHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("POST baz"))
-}
-
-func LogRequests(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s to %s\n", r.Method, r.URL)
-
-		next.ServeHTTP(w, r)
-	}
-	return http.HandlerFunc(fn)
 }
